@@ -1,0 +1,80 @@
+body {
+  padding-top: 70px;
+}
+
+a.anchor {
+  display: block;
+  position: relative;
+  top: -70px;
+  visibility: hidden;
+}
+
+#header,
+#footer {
+  background-color: #2196f3;
+}
+#header *,
+#footer * {
+  font-weight: bold;
+}
+
+#footer * {
+  color: white;
+}
+
+footer .footer-copyright {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(51, 51, 51, 0.08);
+}
+
+.navbar .navbar-toggle {
+  border: none;
+}
+.navbar .navbar-toggle .icon-bar {
+  background-color: white;
+}
+.navbar .navbar-brand {
+  padding: 0.5em;
+}
+.navbar .navbar-brand span {
+  color: white;
+}
+.navbar .navbar-brand img {
+  width: 1.8em;
+  vertical-align: middle;
+  box-shadow: 0px 0px 10px #FFF;
+  border-radius: 50%;
+}
+
+.grid .gutter-sizer {
+  width: 1em;
+}
+@media screen and (max-width: 480px) {
+  .grid .grid-sizer,
+  .grid .grid-item {
+    width: 100%;
+  }
+}
+@media screen and (min-width: 480px) {
+  .grid .grid-sizer,
+  .grid .grid-item {
+    width: 30%;
+    transition: all .2s ease-in-out;
+  }
+  .grid .grid-item:hover {
+    transform: scale(1.1);
+    z-index: 100;
+    box-shadow: 0px 0px 5px #2196f3;
+  }
+}
+
+#footer .fa {
+  margin: 0 0 0 0.5em;
+}
+
+.contactme {
+  color: #2196f3;
+  font-size: 2em;
+  padding-left: 2em;
+}

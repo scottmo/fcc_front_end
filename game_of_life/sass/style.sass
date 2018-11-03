@@ -1,0 +1,58 @@
+$clock-color: #18c3ab
+$control-color: #6699cc
+$background-color: #1b2b34
+$reset-btn-color: #56a9c3
+
+@mixin cell-size($size: 8px)
+  .row
+    height: $size
+    .cell
+      width: $size
+      height: $size
+
+@mixin font-size($sizeValue: 1.6)
+  font-size: ($sizeValue * 10) + px
+  font-size: $sizeValue + rem
+
+body
+  background-color: $background-color
+
+h1
+  color: #FFF
+  text-align: center
+  font-weight: bold
+
+.container
+  padding: 20px
+
+.board
+  text-align: center
+  height: 0
+  &.small
+    @include cell-size(20px)
+  &.medium
+    @include cell-size(15px)
+  &.large
+    @include cell-size(12px)
+  .row
+    .cell
+      display: inline-block
+      border-top: 1px solid #5a90ae
+      border-left: 1px solid #5a90ae
+      &.old
+        background-color: #0ED500
+      &.live
+        background-color: #9cec9a
+  .row
+    height: 0
+    overflow: visible
+      
+.controlPanel
+  text-align: center
+  .panelText
+    color: #FFF
+  .controlGroup
+    margin: 10px
+    display: inline-block
+    
+    

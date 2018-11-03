@@ -1,0 +1,299 @@
+/**
+ * Game Rules
+ * - Any live cell with < 2 live neighbours dies
+ * - Any live cell with 2 or 3 live neighbours lives on to the next generation.
+ * - Any live cell with more > 3 live neighbours dies
+ * - Any dead cell with 3 live neighbours becomes a live cell
+ */
+
+/****************************************/
+/* imports-ish
+/****************************************/
+const { observer } = mobxReact
+const { observable, computed } = mobx
+
+/****************************************/
+/* Constants
+/****************************************/
+const BASE_DELAY = 100;
+const GAME_STATUS = { RUN: Symbol('RUN'), PAUSE: Symbol('PAUSE') };
+const CELL_STATUS = { DEAD: 0, LIVE: 1, OLD: 2 };
+const BOARD_SIZE = {
+  small: {w: 50, h: 30},
+  medium: {w: 70, h: 50},
+  large: {w: 100, h: 80}
+};
+
+/****************************************/
+/* Store
+/****************************************/
+class GameOfLifeStore {
+  @observable cells = [];
+  @observable generations = 0;
+  @observable speedModifier = 1;
+  @observable status = GAME_STATUS.RUN;
+  @observable boardSize = "small";
+
+  @computed get neighborDiff() {
+    return {
+      colL: [-(this.width + 1), -1, this.width - 1],
+      colM: [-(this.width), this.width],
+      colR: [-(this.width - 1), 1, this.width + 1]
+    };
+  }
+
+  @computed get numCells() {
+    return this.width * this.height;
+  }
+
+  @computed get width() {
+    return BOARD_SIZE[this.boardSize].w;
+  }
+
+  @computed get height() {
+    return BOARD_SIZE[this.boardSize].h;
+  }
+
+  reset() {
+    let newCells = [];
+    for (let i = 0; i < this.numCells; i++) {
+      newCells.push(CELL_STATUS.DEAD);
+    }
+    this.cells = newCells;
+    this.generations = 0;
+    this.status = GAME_STATUS.PAUSE;
+  }
+
+  toggleCell(id) {
+    let cellStatus = this.cells[id];
+    this.cells[id] = (cellStatus === CELL_STATUS.DEAD) ?
+                     CELL_STATUS.LIVE : CELL_STATUS.DEAD;
+  }
+
+  randomizeCells() {
+    let newCells = [];
+    for (let i = 0; i < this.numCells; i++) {
+      newCells.push(this.getRandomCellState());
+    }
+    this.cells = newCells;
+  }
+
+  getRandomCellState() {
+    // dead cell gets higher chance
+    // to make patches of live cell instead of half dead/live
+    let random = Math.floor(Math.random() * 5);
+    if (random === 0) {
+      return CELL_STATUS.LIVE;
+    } else {
+      return CELL_STATUS.DEAD;
+    }
+  }
+
+  computeNextGeneration() {
+    let newCells = [];
+    for (let i = 0; i < this.numCells; i++) {
+      newCells.push(this.getNextGenerationCell(this.cells, i));
+    }
+    this.generations++;
+    this.cells = newCells;
+  }
+
+  getNextGenerationCell(cells, id) {
+    let liveCount = this.getLiveNeighborCount(cells, id);
+    // gist of game of life
+    if (cells[id] === CELL_STATUS.DEAD) {
+      return (liveCount === 3) ?
+          CELL_STATUS.LIVE : CELL_STATUS.DEAD;
+    } else { // live and old
+      return (liveCount < 2 || liveCount > 3) ?
+          CELL_STATUS.DEAD : CELL_STATUS.OLD;
+    }
+  }
+
+  getLiveNeighborCount(cells, id) {
+    let liveCount = 0;
+    let col = id % this.width;
+    for (let key in this.neighborDiff) {
+      if (col === 0 && key === "colL") continue;  // no left neighbors
+      if (col === 29 && key === "colR") continue; // no right neighbors
+      for (let i = 0; i < this.neighborDiff[key].length; i++) {
+        let neighborId = id + this.neighborDiff[key][i];
+        if (neighborId >= 0 && neighborId < this.numCells &&
+            cells[neighborId] !== CELL_STATUS.DEAD) {
+          liveCount++;
+        }
+      }
+    }
+    return liveCount;
+  }
+}
+
+/****************************************/
+/* Components
+/****************************************/
+
+/*
+ *Button
+ */
+const Button = ({className, onClick, label}) => {
+  return (
+    <button className={className} onClick={onClick}>{label}</button>
+  );
+};
+Button.propTypes = {
+  className: React.PropTypes.string,
+  onClick:   React.PropTypes.func.isRequired,
+  label:     React.PropTypes.string.isRequired
+};
+
+/*
+ * Cell
+ */
+const Cell = observer(({id, status}) => {
+  let statusClass;
+  if (status === CELL_STATUS.LIVE) {
+    statusClass = "live";
+  } else if (status === CELL_STATUS.OLD) {
+    statusClass = "old";
+  } else {
+    statusClass = "dead";
+  }
+  return (
+    <div id={id} className={"cell " + statusClass} />
+  );
+});
+Cell.propTypes = {
+  id:      React.PropTypes.string.isRequired,
+  status:  React.PropTypes.string.isRequired
+};
+
+/*
+ * Board
+ */
+const Board = observer(({cells, className, width, height, onCellClick}) => {
+
+  onCellClick = onCellClick || function() {};
+  className = className || "";
+
+  let rows = [];
+  let id = 0;
+  for (let r = 0; r < height; r++) {
+    let row = [];
+    for (let c = 0; c < width; c++) {
+      row.push(<Cell status={cells[id]} id={id} />);
+      id++;
+    }
+    rows.push(row);
+  }
+
+  return (
+    <div className={"board " + className}
+      onClick={(e) => onCellClick(e.target)}
+    >
+      {rows.map(row => (
+         <div className="row">{row}</div>
+       ))}
+    </div>
+  );
+});
+Board.propTypes = {
+  cells:  React.PropTypes.arrayOf(React.PropTypes.number).isRequired,
+  width:  React.PropTypes.number.isRequired,
+  height: React.PropTypes.number.isRequired
+};
+
+/*
+ * GameOfLife
+ */
+@observer
+class GameOfLife extends React.Component {
+  constructor(props) {
+    super(props);
+    props.store.randomizeCells();
+  }
+  componentDidMount() {
+    const {store} = this.props;
+    var timeout;
+    var updateBoard = function(){
+        if (store.status === GAME_STATUS.RUN) {
+          store.computeNextGeneration();
+        }
+        timeout = setTimeout(updateBoard, BASE_DELAY/store.speedModifier);
+    }
+    timeout = setTimeout(updateBoard, BASE_DELAY/store.speedModifier);
+  }
+  render() {
+    const {store} = this.props;
+    return (
+      <div>
+        <h1>Game Of Life</h1>
+        <div className="controlPanel">
+          <p className="panelText">Generations {store.generations}</p>
+          <div className="controlGroup">
+            <Button label="RUN"
+              className="btn btn-success"
+              onClick={() => store.status = GAME_STATUS.RUN} />
+            <Button label="PAUSE"
+              className="btn btn-danger"
+              onClick={() => store.status = GAME_STATUS.PAUSE} />
+            <Button label="RESET"
+              className="btn btn-info"
+              onClick={() => store.reset() } />
+            <Button label="Randomize"
+              className="btn btn-default"
+              onClick={() => store.randomizeCells()} />
+          </div>
+          <div className="controlGroup">
+            <Button label="SLOW"
+              className="btn btn-info"
+              onClick={this.setSpeedModifier.bind(this, 1)} />
+            <Button label="MEDIUM"
+              className="btn btn-primary"
+              onClick={this.setSpeedModifier.bind(this, 2)} />
+            <Button label="FAST"
+              className="btn btn-danger"
+              onClick={this.setSpeedModifier.bind(this, 3)} />
+          </div>
+          <div className="controlGroup">
+            <Button label={BOARD_SIZE.small.w + "x" + BOARD_SIZE.small.h}
+              className="btn btn-default"
+              onClick={this.setSize.bind(this, "small")} />
+            <Button label={BOARD_SIZE.medium.w + "x" + BOARD_SIZE.medium.h}
+              className="btn btn-default"
+              onClick={this.setSize.bind(this, "medium")} />
+            <Button label={BOARD_SIZE.large.w + "x" + BOARD_SIZE.large.h}
+              className="btn btn-default"
+              onClick={this.setSize.bind(this, "large")} />
+          </div>
+        </div>
+        <Board
+          cells={store.cells}
+          className={store.boardSize}
+          width={store.width} height={store.height}
+          onCellClick={this.onCellClick.bind(this)}/>
+      </div>
+    );
+  }
+  onCellClick(cell) {
+    this.props.store.toggleCell(parseInt(cell.id));
+    this.props.store.status = GAME_STATUS.PAUSE;
+  }
+  setSpeedModifier(speedModifier) {
+    this.props.store.speedModifier = speedModifier;
+  }
+  setSize(size) {
+    const {store} = this.props;
+    store.boardSize = size;
+    store.reset();
+  }
+}
+GameOfLife.propTypes = {
+  store: React.PropTypes.object.isRequired
+};
+
+// index
+const gameStore = new GameOfLifeStore();
+ReactDOM.render(
+  <GameOfLife store={gameStore} />,
+  document.getElementById('root')
+);

@@ -1,0 +1,60 @@
+$tile-size: 0.75em;
+
+.app {
+  background-color: #000;
+  color: #FFF;
+  text-align: center;
+}
+
+.title {
+  font-size: 3em;
+}
+
+.grid {
+  .row {
+    height: $tile-size;
+    .tile {
+      width: $tile-size;
+      height: $tile-size;
+      display: inline-block;
+      &.wall {
+        background-color: #555555;
+      }
+      &.room {
+        background-color: #FFFFFF;
+      }
+      &.weapon {
+        background-color: #F2BA4E;
+      }
+      &.health {
+        background-color: #78ee9d;
+      }
+      &.stair {
+        background-color: #8814d7;
+      }
+      &.enemy {
+        background-color: #ed3939;
+      }
+      &.player {
+        background-color: #3d6eec;
+      }
+      &.dark {
+        background-color: #000000;
+      }
+      &.boss {
+        background-color: #000000;
+      }
+    }
+  }
+}
+
+ul.statusBar {
+  list-style-type: none;
+  margin: 10px;
+  padding: 0;
+
+  li {
+    padding: 16px;
+    display: inline-block;
+  }
+}

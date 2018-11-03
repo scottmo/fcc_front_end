@@ -1,0 +1,110 @@
+- var codepen_url  = "https://www.codepen.io/momosct/"
+- var github_url   = "https://www.github.com/scottmo"
+- var linkedin_url = "https://www.linkedin.com/in/scottscmo"
+
+- var email = "scottscmo@gmail.com"
+
+- var phimg =  "http://i1376.photobucket.com/albums/ah9/momosct/FCC/placeholder_zpsnxsw6kvd.png"
+- var me_pic =  "http://i1376.photobucket.com/albums/ah9/momosct/FCC/minecraft_avatar_sq_zpsew0tv1nz.png"
+
+mixin navitem(href, text)
+  li(data-toggle="collapse" data-target=".in")
+    a.page-scroll(href= href)
+      | #{text}
+
+mixin project(heading, link, img_src, footer)
+  .thumbnail.panel.grid-item(class!=attributes.class)
+    a(href=link target="_blank")
+      img(src=img_src)
+    .caption
+      h4= heading
+      p= footer
+
+mixin contact(link, icon_class, text)
+  a(href=link target="_blank")
+    i(class="fa fa-" + icon_class)
+  if (text)
+    |  #{text}
+
+// enable navbar item highlight based on scroll pos
+body(data-spy="scroll" data-target=".navbar-fixed-top")
+
+  nav#header.navbar.navbar-default.navbar-fixed-top.navbar-inverse
+    .container-fluid
+
+      .navbar-header
+        // mobile collapsed menu with 3 bars
+        button.navbar-toggle.collapsed(type='button', data-toggle='collapse', data-target='#collapse_menu', aria-expanded='false')
+          span.sr-only Toggle Navigation
+          span.icon-bar
+          span.icon-bar
+          span.icon-bar
+        // Page Title
+        a.navbar-brand(href='#')
+          span Shaocong 
+          span: img(src=me_pic).circle
+          span  Mo
+
+      // navbar-collapse for mobile menu toggle
+      #collapse_menu.collapse.navbar-collapse
+        ul.nav.navbar-nav.navbar-right
+          +navitem("#about", "ABOUT")
+          +navitem("#portfolio", "PORTFOLIO")
+          +navitem("#contact", "CONTACT")
+
+  a#about.anchor
+  .container
+    h4: a(href="#about") About
+    hr
+    | I am a developer and I love coffee 
+    i.fa.fa-coffee
+    | . Last year I fell in love with web development and ever since then I have been on a journey of exploring the infinite possibilities that the web offers.
+
+  a#portfolio.anchor
+  .container
+    h4: a(href="#portfolio") Portfolio
+    hr
+    .grid
+      .grid-sizer
+      .gutter-sizer
+      +project("Alan Turing Tribute Page",
+        "https://codepen.io/momosct/full/NrNKVK", 
+        "http://i1376.photobucket.com/albums/ah9/momosct/FCC/TributePage_zpslotf1jrd.png",
+        "Tribute page project to play with various bootstrap features")
+      +project("Random Quote Machine",
+        "https://codepen.io/momosct/full/pbEgje/",
+        "http://i1376.photobucket.com/albums/ah9/momosct/FCC/QuoteMachine_zps0yubrcca.jpg",
+        "Playing with random quote provider API")
+      +project("Local Weather App",
+        "http://codepen.io/momosct/full/NrRyKv/",
+        "http://i1376.photobucket.com/albums/ah9/momosct/FCC/local_weather_app_zpsprvkiaz9.png",
+        "Provide local weather info using ipinfo and openweathermap API")
+      +project("Twitch.tv API",
+        "https://codepen.io/momosct/full/AXRbmz/",
+        "http://i1376.photobucket.com/albums/ah9/momosct/FCC/twitch_status_zpslvkybgzl.png",
+        "Twitch.tv API")
+      +project("Secret Project",
+        "#",
+        phimg,
+        "Nope, you can't click this")
+      +project("Wiki Search",
+        "https://codepen.io/momosct/full/BzporO/",
+        "http://i1376.photobucket.com/albums/ah9/momosct/FCC/wikiviewer_zpskgypxlez.png",
+        "Testing Wiki API and some css transition effects")
+
+  a#contact.anchor
+  footer#footer
+    .container
+      h4: a(href="#contact") {"<b>Contact me</b>": [
+      .contactme
+        +contact("mailto:" + email, "envelope", email)
+        | ,
+        +contact(codepen_url, "codepen")
+        | ,
+        +contact(github_url, "github")
+        | ,
+        +contact(linkedin_url, "linkedin")
+      h5 ]}
+    .footer-copyright
+      .container
+        | Copyright © Shaocong Mo 2016. All Rights Reserved

@@ -1,0 +1,735 @@
+const {PropTypes, Component} = React;
+const {combineReducers, createStore} = Redux;
+const {connect, Provider} = ReactRedux;
+
+// action types
+const Types = {
+  SET_ENTITIES: 'SET_ENTITIES',
+  REMOVE_ENTITY: 'REMOVE_ENTITY',
+  SET_ENEMY_HEALTH: 'SET_ENEMY_HEALTH',
+
+  LEVEL_UP: 'LEVEL_UP',
+  SET_XP: 'SET_XP',
+  SET_PLAYER_HEALTH: 'SET_PLAYER_HEALTH',
+  UPGRADE_WEAPON: 'UPGRADE_WEAPON',
+  MOVE: 'MOVE',
+
+  TOGGLE_DARKNESS: 'TOGGLE_DARKNESS',
+  SET_DUNGEON: 'SET_DUNGEON',
+  SET_DUNGEON_LEVEL: 'SET_DUNGEON_LEVEL',
+  RESET: 'RESET'
+};
+
+// actions
+function action(type, ...argNames) {
+  return function actionCreator(...args) {
+    const newAction = { type };
+    argNames.forEach((arg, index) => {
+      newAction[argNames[index]] = args[index];
+    });
+    return newAction;
+  };
+}
+const Actions = {
+  setEntities: action(Types.SET_ENTITIES, 'entities'),
+  removeEntity: action(Types.REMOVE_ENTITY, 'entityName'),
+  setEnemyHealth: action(Types.SET_ENEMY_HEALTH, 'entityName', 'health'),
+
+  levelUp: action(Types.LEVEL_UP),
+  setXP: action(Types.SET_XP, 'xp'),
+  setPlayerHealth: action(Types.SET_PLAYER_HEALTH, 'health'),
+  upgradeWeapon: action(Types.UPGRADE_WEAPON),
+  move: action(Types.MOVE, 'x', 'y'),
+
+  reset: action(Types.RESET),
+  setDungeon: action(Types.SET_DUNGEON, 'dungeonMap'),
+  setDungeonLevel: action(Types.SET_DUNGEON_LEVEL, 'level'),
+  toggleDarkness: action(Types.TOGGLE_DARKNESS)
+};
+
+// dungeon generator
+const DungeonGenerator = (function DungeonGeneratorSetup() {
+  const DEFAULT_CONFIG = {
+    mapSize: 50,
+    roomCount: 10,
+    roomMinSize: 5,
+    roomMaxSize: 15,
+    tileType: {
+      wall: '#',
+      room: ' '
+    }
+  };
+
+  function getRandomInt(min, max) {
+    return ~~((Math.random() * (max - min)) + min);
+  }
+
+  function getRandomLocation({ x, y, w, h }) {
+    return { x: getRandomInt(x, x + w), y: getRandomInt(y, y + h) };
+  }
+
+  function getCenter({ x, y, w, h }) {
+    return { x: x + (w / 2), y: y + (h / 2) };
+  }
+
+  // check if room 'check' is overlapping any of the rooms
+  function isOverlapped(check, rooms) {
+    for (let id = 0; id < rooms.length; id++) {
+      const room = rooms[id];
+      if (check === room) continue;
+      // any of the 4 following conditions makes overlapping impossible
+      if (!(check.x + check.w < room.x || // check's right not touching room's left
+          check.y + check.h < room.y || // check's bottom not touching room's top
+          room.x + room.w < check.x || // room's right not touching check's left
+          room.y + room.h < check.y // room's bottom not touching check's top
+        )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // fill a 2D rect with $tile starting from grid[y][x]
+  function drawRect(grid, tile, { x, y, w, h }) {
+    for (let row = 0; row < h; row++) {
+      if (typeof grid[row + y] === 'undefined') {
+        grid[row + y] = [];
+      }
+      for (let col = 0; col < w; col++) {
+        grid[row + y][col + x] = tile;
+      }
+    }
+  }
+
+  // draw a tunnel between 2 rooms
+  function drawTunnel(grid, tile, room1, room2) {
+    const end1 = getRandomLocation(room1);
+    const end2 = getRandomLocation(room2);
+    while (end1.x !== end2.x) {
+      end1.x += end1.x > end2.x ? -1 : 1;
+      grid[end1.y][end1.x] = tile;
+    }
+    while (end1.y !== end2.y) {
+      end1.y += end1.y > end2.y ? -1 : 1;
+      grid[end1.y][end1.x] = tile;
+    }
+  }
+
+  function drawRooms(grid, rooms, tile) {
+    for (let id = 0; id < rooms.length; id++) {
+      const room = rooms[id];
+      const neighbor = room.neighbor;
+      drawRect(grid, tile, room);
+      if (neighbor) {
+        drawTunnel(grid, tile, room, neighbor);
+      }
+    }
+  }
+
+  // return a set of rooms with random locations/sizes
+  function generateRooms(mapSize, roomMinSize, roomMaxSize, roomCount) {
+    const rooms = [];
+    while (rooms.length < roomCount) {
+      const room = {
+        x: getRandomInt(1, mapSize - roomMaxSize - 1),
+        y: getRandomInt(1, mapSize - roomMaxSize - 1),
+        w: getRandomInt(roomMinSize, roomMaxSize),
+        h: getRandomInt(roomMinSize, roomMaxSize)
+      };
+
+      if (!isOverlapped(room, rooms)) {
+        rooms.push(room);
+      }
+    }
+    return rooms;
+  }
+
+  function getDistance(pointA, pointB) {
+    return Math.abs(pointA.x - pointB.x) + Math.abs(pointA.y - pointB.y);
+  }
+
+  function getClosestRoom(currentRoom, rooms, avoidLinked) {
+    const center = getCenter(currentRoom);
+    let closestRoom = null;
+    let closestDistance = Number.MAX_SAFE_INTEGER;
+    for (let id = 0; id < rooms.length; id++) {
+      const neighbor = rooms[id];
+      if (neighbor !== currentRoom && (avoidLinked && !neighbor.linked)) {
+        const neighborCenter = getCenter(neighbor);
+        const distance = getDistance(center, neighborCenter);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestRoom = neighbor;
+        }
+      }
+    }
+    return closestRoom;
+  }
+
+  // connect rooms with tunnels
+  function connectRooms(rooms) {
+    let currentRoom = rooms[0];
+    let neighbor;
+    for (let id = 0; id < rooms.length - 1; id++) {
+      currentRoom.linked = true;
+      neighbor = getClosestRoom(currentRoom, rooms, true);
+      currentRoom.neighbor = neighbor;
+      currentRoom = neighbor;
+    }
+    // have the tail connect to a node as well
+    currentRoom.neighbor = getClosestRoom(currentRoom, rooms, false);
+  }
+
+  function nudgeRoom(room, rooms, dest, xORy) {
+    let oldLoc;
+    while (room[xORy] !== dest) {
+      oldLoc = room[xORy];
+      if (room[xORy] < dest) room[xORy]++;
+      else if (room[xORy] > dest) room[xORy]--;
+      if (isOverlapped(room, rooms)) {
+        room[xORy] = oldLoc;
+        break;
+      }
+    }
+  }
+
+  // nudge rooms towards the center to make tunnels shorter
+  function compactRooms(rooms, center) {
+    for (let id = 0; id < rooms.length; id++) {
+      nudgeRoom(rooms[id], rooms, center.x, 'x');
+      nudgeRoom(rooms[id], rooms, center.y, 'y');
+    }
+  }
+
+  /******************************
+   * public
+   ******************************/
+  const main = function main(config) {
+    Object.assign(this, DEFAULT_CONFIG, config);
+  };
+
+  main.prototype.generate = function generate() {
+    // init grid with walls
+    const grid = [];
+    drawRect(grid, this.tileType.wall, { x: 0, y: 0, w: this.mapSize, h: this.mapSize });
+
+    // generate rooms and connect them
+    const mapCenter = {x: this.mapSize / 2, y: this.mapSize / 2};
+    const rooms = generateRooms(this.mapSize, this.roomMinSize, this.roomMaxSize, this.roomCount);
+    compactRooms(rooms, mapCenter);
+    connectRooms(rooms);
+
+    // draw rooms on grid
+    drawRooms(grid, rooms, this.tileType.room);
+
+    return grid;
+  };
+
+  main.prototype.inject = function inject(grid, injects, updateGrid) {
+    const injected = {};
+    for (let id = 0; id < injects.length; id++) {
+      const tile = injects[id];
+      const tileType = tile.tileType;
+      let numTilePlaced = 0;
+      while (numTilePlaced < tile.count) {
+        const tileToInject = {
+          type: tileType,
+          x: getRandomInt(1, this.mapSize - 1),
+          y: getRandomInt(1, this.mapSize - 1)
+        };
+        if (grid[tileToInject.y][tileToInject.x] === this.tileType.room) {
+          injected[tileToInject.x + '_' + tileToInject.y] = tileToInject;
+          numTilePlaced++;
+          if (updateGrid) {
+            grid[tileToInject.y][tileToInject.x] = tileType;
+          }
+        }
+      }
+    }
+    return injected;
+  };
+
+  return main;
+})();
+
+// game logics
+const SIGHT_RANGE = 7;
+const TILE_TYPE = {
+  wall: 0, room: 1, weapon: 2, health: 3,
+  stair: 4, enemy: 5, player: 6, dark: 7, boss: 8
+};
+const TILE_CLASS = Object.keys(TILE_TYPE);
+const CONFIGS = {
+  damageVariance: 5,
+  sightRange: 7,
+  playerBase: {
+    baseHealth: 100,
+    baseDamage: 12,
+    health: 20,
+    damage: 12,
+    xp: 60
+  },
+  enemyBase: {
+    health: 20,
+    damage: 12,
+    xp: 15
+  },
+  healthBase: 20,
+  weapons: [
+    { name: 'Unbreakable Chopstick', damage: 0  },
+    { name: 'Millitary Dagger',      damage: 12 },
+    { name: 'Ninja Katana',          damage: 16 },
+    { name: 'Ninja Katana',          damage: 22 },
+    { name: 'Jedi Lightsaber',       damage: 30 },
+    { name: '==|[[{{Excaliber}}]]>', damage: 40 }
+  ],
+  dungeonDisplay: {
+    width: 100,
+    height: 100
+  },
+  dungeon: {
+    maxLevel: 4,
+    mapSize: 100,
+    roomCount: 12,
+    roomMinSize: 10,
+    roomMaxSize: 25,
+    tileType: {
+      wall: TILE_TYPE.wall, room: TILE_TYPE.room
+    }
+  },
+  entities: [
+    { tileType: TILE_TYPE.stair,  count: 1 },
+    { tileType: TILE_TYPE.weapon, count: 1 },
+    { tileType: TILE_TYPE.health, count: 5 },
+    { tileType: TILE_TYPE.enemy,  count: 5 },
+    { tileType: TILE_TYPE.player, count: 1 }
+  ],
+  bossEntity: { tileType: TILE_TYPE.boss, count: 1 },
+  winMessage: "You've beaten the dungoen!",
+  lostMessage: "You've lost:( Better luck next time!"
+};
+const dungeonGenerator = new DungeonGenerator(CONFIGS.dungeon);
+const LOGICS = {
+  generateDungeon: function generateDungeon(dungeonLevel) {
+    const dungeonMap = dungeonGenerator.generate();
+    let entitiesConfig = CONFIGS.entities;
+    if (dungeonLevel >= CONFIGS.dungeon.maxLevel) {
+      entitiesConfig = entitiesConfig.slice(0);
+      for (let i = 0; i < entitiesConfig.length; i++) {
+        if (entitiesConfig[i].tileType === TILE_TYPE.stair) {
+          entitiesConfig[i] = CONFIGS.bossEntity;
+        }
+      }
+    }
+    const entities = dungeonGenerator.inject(dungeonMap, entitiesConfig);
+    const playerLoc = {};
+    Object.keys(entities).forEach((entityName) => {
+      const entity = entities[entityName];
+      switch(entity.type) {
+        case TILE_TYPE.enemy:
+          entity.health = CONFIGS.enemyBase.health * dungeonLevel;
+          break;
+        case TILE_TYPE.boss:
+          entity.health = CONFIGS.enemyBase.health * dungeonLevel * 2;
+          break;
+        case TILE_TYPE.player:
+          playerLoc.x = entity.x;
+          playerLoc.y = entity.y;
+          delete entities[entityName];
+          break;
+      }
+    });
+    return {dungeonMap, entities, playerLoc};
+  },
+  getTileType: function getTileType(player, entities, dungeonMap, curX, curY) {
+    let entity;
+    if (player.x === curX && player.y === curY) {
+      entity = player;
+    } else {
+      entity = entities[this.getEntityName(curX, curY)];
+    }
+    return entity ? entity.type : dungeonMap[curY][curX];
+  },
+  calcPlayerDamage: function calcPlayerDamage(level, weaponId) {
+    const {playerBase, weapons} = CONFIGS;
+    return playerBase.baseDamage + weapons[weaponId].damage + playerBase.damage * level;
+  },
+  calcPlayerMaxHealth: function calcPlayerMaxHealth(level) {
+    const {playerBase} = CONFIGS;
+    return playerBase.baseHealth + playerBase.health * (level - 1);
+  },
+  calcPlayerMaxXP: function calcPlayerMaxXP(level) {
+    const {playerBase} = CONFIGS;
+    return playerBase.xp * level;
+  },
+  getHealAmount: function getHealAmount(dungeonLevel) {
+    return CONFIGS.healthBase * dungeonLevel;
+  },
+  getEnemyDamage: function getEnemyDamage(dungeonLevel) {
+    return CONFIGS.enemyBase.damage * dungeonLevel;
+  },
+  getHealedHealth: function getHealedHealth(player, dungeonLevel) {
+    const playerMaxHealth = this.calcPlayerMaxHealth(player.level);
+    let newHealth = player.health + LOGICS.getHealAmount(dungeonLevel);
+    if (newHealth > playerMaxHealth) {
+      newHealth = playerMaxHealth;
+    }
+    return newHealth;
+  },
+  getEntityName: function getEntityName(x, y) {
+    return x + '_' + y;
+  },
+  getRandomInt: function getRandomInt(min, max) {
+    return ~~((Math.random() * (max - min)) + min);
+  },
+  getDamageVariance: function getDamageVariance(damage) {
+    return this.getRandomInt(damage - CONFIGS.damageVariance, damage + CONFIGS.damageVariance);
+  },
+  fight: function fight(player, enemy, dungeonLevel) {
+    const playerHealth = player.health - this.getDamageVariance(this.getEnemyDamage(dungeonLevel));
+    const enemyHealth = enemy.health - this.getDamageVariance(player.damage);
+    let xp = -1;
+    if (playerHealth <= 0) {
+      return {gameOver: true, playerWon: false};
+    }
+    if (enemyHealth <= 0) {
+      if (enemy.type === TILE_TYPE.boss) {
+        return {gameOver: true, playerWon: true};
+      } else {
+        xp = player.xp - CONFIGS.enemyBase.xp * dungeonLevel;
+      }
+    }
+    return {playerHealth, enemyHealth, xp};
+  }
+};
+
+// reducers
+const INITIAL_STATE = {
+  player: {
+    x: 0,
+    y: 0,
+    type: TILE_TYPE.player,
+    health: CONFIGS.playerBase.baseHealth,
+    weaponId: 0,
+    damage: CONFIGS.playerBase.baseDamage + CONFIGS.weapons[0].damage,
+    level: 1,
+    xp: CONFIGS.playerBase.xp
+  },
+  entities: {},
+  dungeon: {
+    dungeonMap: [],
+    level: 1,
+    displayWidth: CONFIGS.dungeonDisplay.width,
+    displayHeight: CONFIGS.dungeonDisplay.height,
+    isDark: true
+  }
+};
+const player = (state = INITIAL_STATE.player, action) => {
+  switch(action.type) {
+    case Types.LEVEL_UP:
+      const newLevel = state.level + 1;
+      return {...state,
+        level: newLevel,
+        xp: LOGICS.calcPlayerMaxXP(newLevel),
+        health: LOGICS.calcPlayerMaxHealth(newLevel),
+        damage: LOGICS.calcPlayerDamage(newLevel, state.weaponId)
+      };
+    case Types.SET_XP:
+      return {...state,
+        xp: action.xp
+      };
+    case Types.UPGRADE_WEAPON:
+      const newWeaponId = state.weaponId + 1;
+      return {...state,
+        weaponId: newWeaponId,
+        damage: LOGICS.calcPlayerDamage(state.level, newWeaponId)
+      };
+    case Types.MOVE:
+      return {...state,
+        x: action.x,
+        y: action.y
+      };
+    case Types.SET_PLAYER_HEALTH:
+      return {...state,
+        health: action.health
+      };
+    case Types.RESET:
+      return INITIAL_STATE.player;
+    default:
+      return state;
+  }
+};
+const dungeon = (state = INITIAL_STATE.dungeon, action) => {
+  switch(action.type) {
+    case Types.SET_DUNGEON:
+      return {...state,
+        dungeonMap: action.dungeonMap
+      };
+    case Types.SET_DUNGEON_LEVEL:
+      return {...state,
+        level: action.level
+      };
+    case Types.TOGGLE_DARKNESS:
+      return {...state,
+        isDark: !state.isDark
+      };
+    default:
+      return state;
+  }
+};
+const entities = (state = INITIAL_STATE.entities, action) => {
+  switch(action.type) {
+    case Types.SET_ENTITIES:
+      return action.entities;
+    case Types.REMOVE_ENTITY:
+      return {...state,
+        [action.entityName]: undefined
+      };
+    case Types.SET_ENEMY_HEALTH:
+      return {...state,
+        [action.entityName]: {...state[action.entityName],
+          health: action.health
+        }
+      };
+    default:
+      return state;
+  }
+};
+const rootReducer = combineReducers({dungeon, player, entities});
+
+// dungeon renderer
+function isOutsideOfMap(x, y, dungeonMap) {
+  return ((x < 0) || (x > dungeonMap[0].length - 1) ||
+          (y < 0) || (y > dungeonMap.length - 1));
+}
+function isOutsideOfSight(x, y, player, sightRange) {
+  const xDelta = Math.abs(player.x - x);
+  const yDelta = Math.abs(player.y - y);
+  return ((xDelta > sightRange) || (yDelta > sightRange) || // box range
+    (xDelta * xDelta + yDelta * yDelta >= sightRange * sightRange)); // circle range
+}
+const DungeonRenderer = ({dungeon, player, entities, sightRange}) => {
+  const grid = [];
+  const {dungeonMap, displayWidth, displayHeight, isDark} = dungeon;
+  if (dungeonMap && dungeonMap.length > 0) {
+    const startX = 0;
+    const startY = 0;
+
+    const endX = startX + displayWidth;
+    const endY = startY + displayHeight;
+
+    sightRange = sightRange || SIGHT_RANGE;
+
+    for (let curY = startY; curY < endY; curY++) {
+      const row = [];
+      let tileType;
+      for (let curX = startX; curX < endX; curX++) {
+        if (isDark && isOutsideOfSight(curX, curY, player, sightRange)) {
+          tileType = TILE_TYPE.dark;
+        } else {
+          if (isOutsideOfMap(curX, curY, dungeonMap)) {
+            tileType = TILE_TYPE.wall;
+          } else {
+            tileType = LOGICS.getTileType(player, entities, dungeonMap, curX, curY);
+          }
+        }
+        const tileClass = TILE_CLASS[tileType] ? ' ' + TILE_CLASS[tileType] : '';
+        row.push(<span key={curX + '_' + curY} className={'tile' + tileClass} />);
+      }
+      grid.push(row);
+    }
+  }
+
+  return (
+    <div className="grid">
+      {grid.map((row, rowId) => (
+          <div key={rowId} className="row">{row}</div>
+      ))}
+    </div>
+  );
+};
+DungeonRenderer.propTypes = {
+  dungeon: PropTypes.object.isRequired,
+  player: PropTypes.object.isRequired,
+  entities: PropTypes.object.isRequired,
+  sightRange: PropTypes.number
+};
+
+// status bar
+const StatusBar = ({status}) => {
+  return (
+    <ul className="statusBar">
+      {Object.keys(status).map((fieldName) => (
+        <li key={fieldName}>{fieldName}: {status[fieldName]}</li>
+      ))}
+    </ul>
+  );
+};
+StatusBar.propTypes = {
+  status: PropTypes.object.isRequired
+};
+
+// dungeon crawlers
+
+const ARROW_KEY = {L: 37, U: 38, R: 39, D: 40};
+const MOVE_STEP = {
+  [ARROW_KEY.U]: {x:  0, y: -1},
+  [ARROW_KEY.D]: {x:  0, y:  1},
+  [ARROW_KEY.L]: {x: -1, y:  0},
+  [ARROW_KEY.R]: {x:  1, y:  0}
+};
+
+const notifier = humane.create({baseCls: 'humane-bigbox', timeout: 1500});
+notifier.error = notifier.spawn({addnCls: 'humane-bigbox-error'});
+notifier.success = notifier.spawn({addnCls: 'humane-bigbox-success'});
+
+class DungeonCrawlerCmp extends Component {
+  constructor(props) {
+    super(props);
+    this.props.newDungeon(this.props.dungeon);
+  }
+  componentDidMount() {
+    window.addEventListener('keydown', this._handleKeydown.bind(this));
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._handleKeydown.bind(this));
+  }
+  _handleKeydown(e) {
+    const {player, dungeon, entities, handleMove, newDungeon} = this.props;
+    const moveStep = MOVE_STEP[e.keyCode];
+    if (moveStep) {
+      e.preventDefault();
+      handleMove(player, dungeon, entities, moveStep, newDungeon);
+    }
+  }
+  _getDungeonStatus(player, dungeon) {
+    return {
+      'Health': player.health,
+      'Weapon': CONFIGS.weapons[player.weaponId].name,
+      'Attack': player.damage,
+      'Level': player.level,
+      'Next Level': player.xp,
+      'Dungeon': dungeon.level
+    };
+  }
+  render() {
+    const {player, entities, dungeon} = this.props;
+    const status = this._getDungeonStatus(player, dungeon);
+    return (
+      <div className="dungeonCrawler">
+        <h1 className="title">A Roguelike Dungeon Crawler</h1>
+        <p>Kill the boss in dungeon {CONFIGS.dungeon.maxLevel}. Use arrow keys to move around and kill enemies.</p>
+        <button onClick={this.props.toggleDarkness}>Toggle Darkness</button>
+        <StatusBar status={status}/>
+        <br/>
+        <DungeonRenderer dungeon={dungeon} player={player} entities={entities} sightRange={CONFIGS.sightRange}/>
+      </div>
+    );
+  }
+}
+
+DungeonCrawlerCmp.propTypes = {
+  dungeon: PropTypes.object.isRequired,
+  player: PropTypes.object.isRequired,
+  entities: PropTypes.object.isRequired,
+  toggleDarkness: PropTypes.func.isRequired,
+  newDungeon: PropTypes.func.isRequired,
+  handleMove: PropTypes.func.isRequired
+};
+
+const mapStateToProps = (state) => {
+  return {
+    dungeon: state.dungeon,
+    entities: state.entities,
+    player: state.player,
+  };
+};
+
+const mapDispatchToProps = (dispatch) => {
+  return {
+    toggleDarkness: () => {
+      dispatch(Actions.toggleDarkness());
+    },
+    newDungeon: (dungeon) => {
+      const {dungeonMap, entities, playerLoc} = LOGICS.generateDungeon(dungeon.level + 1);
+      dispatch(Actions.setDungeon(dungeonMap));
+      dispatch(Actions.setEntities(entities));
+      dispatch(Actions.move(playerLoc.x, playerLoc.y));
+    },
+    handleMove: (player, dungeon, entities, step, newDungeon) => {
+      const newLoc = { x: player.x + step.x, y: player.y + step.y };
+      const tileType = LOGICS.getTileType(player, entities, dungeon.dungeonMap, newLoc.x, newLoc.y);
+      const entityName = LOGICS.getEntityName(newLoc.x, newLoc.y);
+      switch(tileType) {
+        case TILE_TYPE.boss:
+        case TILE_TYPE.enemy:
+          const result = LOGICS.fight(player, entities[entityName], dungeon.level);
+          if (result.gameOver) {
+            if (result.playerWon) {
+              notifier.success(CONFIGS.winMessage);
+            } else {
+              notifier.error(CONFIGS.lostMessage);
+            }
+            dispatch(Actions.reset());
+            dispatch(Actions.setDungeonLevel(1));
+            newDungeon(dungeon);
+          } else {
+            if (result.enemyHealth <= 0) {
+              dispatch(Actions.removeEntity(entityName));
+              dispatch(Actions.move(newLoc.x, newLoc.y));
+              if (result.xp === 0) {
+                dispatch(Actions.levelUp());
+              } else {
+                dispatch(Actions.setXP(result.xp));
+              }
+            } else {
+              dispatch(Actions.setEnemyHealth(entityName, result.enemyHealth));
+            }
+            if (result.xp !== 0) {
+              dispatch(Actions.setPlayerHealth(result.playerHealth));
+            }
+          }
+          break;
+        case TILE_TYPE.weapon:
+          dispatch(Actions.move(newLoc.x, newLoc.y));
+          dispatch(Actions.upgradeWeapon());
+          dispatch(Actions.removeEntity(entityName));
+          break;
+        case TILE_TYPE.health:
+          const playerHealth = LOGICS.getHealedHealth(player, dungeon.level);
+          dispatch(Actions.move(newLoc.x, newLoc.y));
+          dispatch(Actions.setPlayerHealth(playerHealth));
+          dispatch(Actions.removeEntity(entityName));
+          break;
+        case TILE_TYPE.room:
+          dispatch(Actions.move(newLoc.x, newLoc.y));
+          break;
+        case TILE_TYPE.stair:
+          newDungeon(dungeon);
+          dispatch(Actions.setDungeonLevel(dungeon.level + 1));
+          break;
+      }
+    }
+  };
+};
+
+const DungeonCrawler = connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(DungeonCrawlerCmp);
+
+// app
+const App = ({title}) => (
+  <div className='app'>
+    <DungeonCrawler />
+  </div>
+);
+
+let store = createStore(rootReducer);
+ReactDOM.render(
+  <Provider store={store}>
+    <App />
+  </Provider>
+,
+  document.getElementById('root')
+);

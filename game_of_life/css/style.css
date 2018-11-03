@@ -1,0 +1,65 @@
+body {
+  background-color: #1b2b34;
+}
+
+h1 {
+  color: #FFF;
+  text-align: center;
+  font-weight: bold;
+}
+
+.container {
+  padding: 20px;
+}
+
+.board {
+  text-align: center;
+  height: 0;
+}
+.board.small .row {
+  height: 20px;
+}
+.board.small .row .cell {
+  width: 20px;
+  height: 20px;
+}
+.board.medium .row {
+  height: 15px;
+}
+.board.medium .row .cell {
+  width: 15px;
+  height: 15px;
+}
+.board.large .row {
+  height: 12px;
+}
+.board.large .row .cell {
+  width: 12px;
+  height: 12px;
+}
+.board .row .cell {
+  display: inline-block;
+  border-top: 1px solid #5a90ae;
+  border-left: 1px solid #5a90ae;
+}
+.board .row .cell.old {
+  background-color: #0ED500;
+}
+.board .row .cell.live {
+  background-color: #9cec9a;
+}
+.board .row {
+  height: 0;
+  overflow: visible;
+}
+
+.controlPanel {
+  text-align: center;
+}
+.controlPanel .panelText {
+  color: #FFF;
+}
+.controlPanel .controlGroup {
+  margin: 10px;
+  display: inline-block;
+}

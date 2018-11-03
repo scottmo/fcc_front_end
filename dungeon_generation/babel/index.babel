@@ -1,0 +1,295 @@
+class DungeonGenerator {
+  //public
+  constructor(config) {
+    this.DEFAULT_CONFIG = {
+      mapSize: 50,
+      roomCount: 10,
+      roomMinSize: 5,
+      roomMaxSize: 15,
+      cellType: {
+        wall: '#',
+        room: ' '
+      }
+      /**
+       * inject: [
+       *   {cellType: '@', count: 2},
+       *   {cellType: '&'m count: 3}
+       * ]
+       */
+    };
+    Object.assign(this, this.DEFAULT_CONFIG, config);
+    this.injected = {};
+  }
+
+  generate() {
+    // init grid with walls
+    var grid = [];
+    this._drawRect(grid, this.cellType.wall, {
+      x: 0,
+      y: 0,
+      w: this.mapSize,
+      h: this.mapSize
+    });
+
+    // randomly put rooms on map and connect them
+    var rooms = this._connectRooms(this._compactRooms(this._generateRooms()));
+
+    for (var i = 0; i < rooms.length; i++) {
+      var room = rooms[i];
+      this._drawRect(grid, this.cellType.room, room);
+
+      var neighbor = room.neighbor;
+      if (neighbor) {
+        this._drawTunnel(grid, this.cellType.room, room, neighbor);
+      }
+    }
+
+    if (this.inject) {
+      this._drawInjections(grid);
+    }
+
+    return grid;
+  }
+
+  getInjected() {
+    return this.injected;
+  }
+
+// private
+  // get uniformly distributed random int between min and max
+  _getRandomInt(min, max) {
+    return ~~((Math.random() * (max - min)) + min);
+  }
+
+  // fill a 2D rect with $cell starting from grid[y][x]
+  _drawRect(grid, cell, {x, y, w, h}) {
+    for (var row = 0; row < h; row++) {
+      if (typeof grid[row + y] === "undefined") {
+        grid[row + y] = [];
+      }
+      for (var col = 0; col < w; col++) {
+        grid[row + y][col + x] = cell;
+      }
+    }
+  }
+
+  // draw a tunnel between 2 rooms
+  _drawTunnel(grid, cell, room1, room2) {
+    var end1 = {
+      x: this._getRandomInt(room1.x, room1.x + room1.w),
+      y: this._getRandomInt(room1.y, room1.y + room1.h)
+    };
+    var end2 = {
+      x: this._getRandomInt(room2.x, room2.x + room2.w),
+      y: this._getRandomInt(room2.y, room2.y + room2.h)
+    };
+    while (end1.x != end2.x) {
+      end1.x > end2.x ? end1.x-- : end1.x++;
+      grid[end1.y][end1.x] = cell;
+    }
+    while (end1.y != end2.y) {
+      end1.y > end2.y ? end1.y-- : end1.y++;
+      grid[end1.y][end1.x] = cell;
+    }
+  }
+
+  _drawInjections(grid) {
+    for (var i = 0; i < this.inject.length; i++) {
+      var cell = this.inject[i];
+      var cellType = cell.cellType;
+      var numCellPlaced = 0;
+      this.injected[cellType] = [];
+      while (numCellPlaced < cell.count) {
+        var loc = {
+          x: this._getRandomInt(1, this.mapSize - 1),
+          y: this._getRandomInt(1, this.mapSize - 1)
+        };
+        if (grid[loc.y][loc.x] === this.cellType.room) {
+          grid[loc.y][loc.x] = cellType;
+          this.injected[cellType].push({x: loc.x, y: loc.y});
+          numCellPlaced++;
+        }
+      }
+    }
+  }
+
+  // check if room "check" is overlapping any of the rooms
+  _isOverlapped(check, rooms) {
+    for (var i = 0; i < rooms.length; i++) {
+      var room = rooms[i];
+      if (check === room) continue;
+      // any of the 4 following conditions makes overlapping impossible
+      if (!(check.x + check.w < room.x || // check's right not touching room's left
+          check.y + check.h < room.y || // check's bottom not touching room's top
+          room.x + room.w < check.x || // room's right not touching check's left
+          room.y + room.h < check.y // room's bottom not touching check's top
+        )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // return a set of rooms with random locations/sizes
+  _generateRooms() {
+    var rooms = [];
+    while (rooms.length < this.roomCount) {
+      var room = {
+        x: this._getRandomInt(1, this.mapSize - this.roomMaxSize - 1),
+        y: this._getRandomInt(1, this.mapSize - this.roomMaxSize - 1),
+        w: this._getRandomInt(this.roomMinSize, this.roomMaxSize),
+        h: this._getRandomInt(this.roomMinSize, this.roomMaxSize)
+      };
+
+      if (!this._isOverlapped(room, rooms)) {
+        rooms.push(room);
+      }
+    }
+    return rooms;
+  }
+
+  _getCenter(room) {
+    return {
+      x: room.x + (room.w / 2),
+      y: room.y + (room.h / 2)
+    };
+  }
+
+  _getClosestRoom(currentRoom, rooms, avoidLinked) {
+    var center = this._getCenter(currentRoom);
+    var closestRoom = null;
+    var closestDistance = Math.pow(this.mapSize, 2);
+    for (var i = 0; i < rooms.length; i++) {
+      var neighbor = rooms[i];
+      if (neighbor !== currentRoom &&
+          (avoidLinked && !neighbor.linked)) {
+        var neighborCenter = this._getCenter(neighbor);
+        var distance = Math.abs(center.x - neighbor.x) + Math.abs(center.y - neighbor.y);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestRoom = neighbor;
+        }
+      }
+    }
+    return closestRoom;
+  }
+
+  // connect rooms with tunnels
+  _connectRooms(rooms) {
+    var currentRoom = rooms[0];
+    for (var i = 0; i < rooms.length - 1; i++) {
+      currentRoom.linked = true;
+      var neighbor = this._getClosestRoom(currentRoom, rooms, true);
+      currentRoom.neighbor = neighbor;
+      currentRoom = neighbor;
+    }
+    // have the tail connect to some other node
+    currentRoom.neighbor = this._getClosestRoom(currentRoom, rooms, false);;
+    return rooms;
+  }
+
+  // nudge rooms towards the center to make tunnels shorter
+  _compactRooms(rooms) {
+    var center = {
+      x: this.mapSize / 2,
+      y: this.mapSize / 2
+    };
+    for (var i = 0; i < rooms.length; i++) {
+      var room = rooms[i];
+      while (room.x !== center.x) {
+        var oldx = room.x;
+        if (room.x < center.x) room.x++;
+        else if (room.x > center.x) room.x--;
+        if (this._isOverlapped(room, rooms)) {
+          room.x = oldx;
+          break;
+        }
+      }
+      while (room.y !== center.y) {
+        var oldy = room.y;
+        if (room.y < center.y) room.y++;
+        else if (room.y > center.y) room.y--;
+        if (this._isOverlapped(room, rooms)) {
+          room.y = oldy;
+          break;
+        }
+      }
+    }
+    return rooms;
+  }
+}
+
+// a way to avoid import to execute this
+if (document.getElementById("__main__")) {
+  const Renderer = {
+    canvas: null,
+    ctx: null,
+    scale: 1,
+
+    printGrid: function(grid) {
+      var output = '';
+      for (var i = 0; i < grid.length; i++) {
+        output += grid[i].join('') + '\n';
+      }
+      console.log(output);
+    },
+
+    initializeCanvas: function(id, width, height, scale) {
+      this.canvas = document.getElementById(id);
+      this.canvas.width = width * scale;
+      this.canvas.height = height * scale;
+      this.ctx = this.canvas.getContext('2d');
+      this.scale = scale;
+    },
+
+    drawCanvas: function(grid, cellType) {
+      var ctx = this.ctx;
+      var scale = this.scale;
+      var canvas = this.canvas;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // var canvasData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var numRows = grid.length;
+      var numCols = grid[0].length;
+      for (var y = 0; y < numRows; y++) {
+        for (var x = 0; x < numCols; x++) {
+          var cell = grid[y][x];
+          switch (cell) {
+            case cellType.wall:
+              ctx.fillStyle = '#304d5d';
+              break;
+            case cellType.room:
+              ctx.fillStyle = '#6699cc';
+              break;
+            default:
+              ctx.fillStyle = '#FFFFFF';
+          }
+          ctx.fillRect(x * scale, y * scale, scale, scale);
+        }
+      }
+    }
+  }
+
+  var config = {
+    cellType: {
+      wall: '#',
+      room: ' '
+    },
+    inject: [
+      {cellType: '@', count: 2},
+      {cellType: '&', count: 3}
+    ]
+  };
+
+  var dungeon = new DungeonGenerator(config);
+  Renderer.initializeCanvas("grid", dungeon.mapSize, dungeon.mapSize, 10);
+  Renderer.drawCanvas(dungeon.generate(), config.cellType);
+
+  var button = document.getElementById("reset");
+  if (button) {
+    button.addEventListener("click", function() {
+      Renderer.drawCanvas(dungeon.generate(), config.cellType);
+    });
+  }
+}

@@ -1,0 +1,377 @@
+/*****************************************
+ * Game Logic
+ *****************************************/
+const WIN_COMBO = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8], // horizontal
+  [0, 3, 6], [1, 4, 7], [2, 5, 8], // vertical
+  [0, 4, 8], [2, 4, 6] // diagonal
+];
+
+function hasWon(marker, cells) {
+  var cellIndex, i;
+  for (i = 0; i < WIN_COMBO.length; i++) {
+    cellIndex = WIN_COMBO[i];
+    if (cells[cellIndex[0]] === marker
+        && cells[cellIndex[1]] === marker
+        && cells[cellIndex[2]] === marker) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function markCell(marker, pos, cells) {
+  var newCells = cells.slice();
+  newCells[pos] = marker;
+  return newCells;
+}
+
+function getScore(markers, cells) {
+  if (hasWon(markers.player, cells)) {
+    return -1;
+  } else if (hasWon(markers.AI, cells)) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+function updateBoard(pos, marker, board) {
+  board.cells[pos] = marker;
+  board.freeCells.splice(board.freeCells.indexOf(pos), 1);
+}
+
+function cloneBoard(board) {
+  return {
+    cells: board.cells.slice(),
+    freeCells: board.freeCells.slice()
+  }
+}
+
+// our score is pretty small, so no need to get actual INF
+const POS_INF = 999;
+const NEG_INF = -999;
+
+function minmax(markers, board, maximizingAI) {
+  let {cells, freeCells} = board;
+  let score = getScore(markers, cells);
+  if (score !== 0 || freeCells.length === 0) {
+    return [score, -1];
+  }
+
+  let bestScore, bestMove,
+      subScore, subMove,
+      nextMove, nextBoard,
+      i;
+  if (maximizingAI) {
+    bestScore = NEG_INF;
+    for (i = 0; i < freeCells.length; i++) {
+      nextMove = freeCells[i];
+      nextBoard = cloneBoard(board);
+      updateBoard(nextMove, markers.AI, nextBoard);
+      [subScore, subMove] = minmax(markers, nextBoard, false);
+      if (subScore > bestScore) {
+        bestScore = subScore;
+        bestMove = nextMove;
+      }
+    }
+    return [bestScore, bestMove];
+  } else {
+    bestScore = POS_INF;
+    for (i = 0; i < freeCells.length; i++) {
+      nextMove = freeCells[i];
+      nextBoard = cloneBoard(board);
+      updateBoard(nextMove, markers.player, nextBoard);
+      [subScore, subMove] = minmax(markers, nextBoard, true);
+      if (subScore < bestScore) {
+        bestScore = subScore;
+        bestMove = nextMove;
+      }
+    }
+    return [bestScore, bestMove];
+  }
+}
+
+function computerRandomMove(marker, board) {
+  let randIndex = Math.floor(Math.random() * board.freeCells.length);
+  board = cloneBoard(board);
+  updateBoard(randIndex, marker, board);
+  return board;
+}
+
+function AIThink(markers, board) {
+  let [bestScore, bestMove] = minmax(markers, board, true);
+  return bestMove;
+}
+
+function computeNextTurn(move, marker, board) {
+  board = cloneBoard(board);
+  updateBoard(move, marker, board);
+  let won = hasWon(marker, board.cells);
+  let draw = !won && board.freeCells.length === 0;
+  return [board, won, draw];
+}
+
+function computeGameUpdates(playerMove, markers, board) {
+  let won, lost, draw;
+  won = lost = draw = false;
+
+  // player turn
+  if (playerMove > -1 || playerMove < 9) {
+    [board, won, draw] = computeNextTurn(playerMove, markers.player, board);
+  }
+
+  // AI turn
+  if (!won && !draw) {
+    let AIMove = AIThink(markers, board);
+    [board, lost, draw] = computeNextTurn(AIMove, markers.AI, board);
+  }
+
+  let gameStatus = { won, lost, draw };
+  return { gameStatus, board };
+}
+
+/*****************************************/
+/* React-Redux stuff start here -------------------------------------
+/*****************************************/
+
+/*****************************************/
+/* state tree
+/*****************************************/
+/*
+{
+  gameStatus: 'running',
+  gameSettings: { player: 'x', AI: 'o', hideSettings: false }
+  cells: ['', 'x', 'o', ...]
+}
+*/
+
+/*****************************************/
+/* reducers
+/*****************************************/
+const combineReducers = Redux.combineReducers;
+
+const initialStateGameSettings = {
+  player: 'x',
+  AI: 'o',
+  hideSettings: false
+};
+const gameSettings = (state = initialStateGameSettings,  action) => {
+  switch(action.type) {
+    case 'SET_MARKERS':
+      return {
+        player: action.player,
+        AI: action.AI,
+        hideSettings: true
+      };
+    default:
+      return state;
+  }
+};
+
+const GAME_STATUS = {
+  WON: "You won :)",
+  LOST: "You lost :(",
+  DRAW: "It's a draw = - =",
+  DEFAULT: "PLAYING"
+};
+const gameStatus = (state = GAME_STATUS.DEFAULT, action) => {
+  switch(action.type) {
+    case 'UPDATE_GAME_STATUS':
+      if (action.gameStatus.won) {
+        return GAME_STATUS.WON;
+      } else if (action.gameStatus.lost) {
+        return GAME_STATUS.LOST;
+      } else if (action.gameStatus.draw) {
+        return GAME_STATUS.DRAW;
+      } else {
+        return state;
+      }
+    case 'RESET':
+      return GAME_STATUS.DEFAULT;
+    default:
+      return state;
+  }
+}
+
+const initialStateBoard = {
+  freeCells: [0,1,2,3,4,5,6,7,8],
+  cells: ['', '', '', '', '', '', '', '', '']
+};
+const board = (state = initialStateBoard, action) => {
+  switch(action.type) {
+    case 'UPDATE_CELLS':
+      return action.board
+    case 'RESET':
+      return initialStateBoard
+    default:
+      return state;
+  }
+};
+
+const ticTacToe = combineReducers({
+  gameSettings, gameStatus, board
+});
+
+/*****************************************/
+/* actions.jsx
+/*****************************************/
+function makeAct(type, ...argNames) {
+  return function(...args) {
+    let action = { type }
+    argNames.forEach((arg, index) => {
+      action[argNames[index]] = args[index]
+    })
+    return action
+  }
+}
+
+const updateCells = makeAct('UPDATE_CELLS', 'board')
+
+const setMarkers = makeAct('SET_MARKERS', 'player', 'AI')
+
+const updateGameStatus = makeAct('UPDATE_GAME_STATUS', 'gameStatus')
+const resetGame = makeAct('RESET')
+
+/*****************************************/
+/* presentational components for TicTacToe
+/*****************************************/
+const PropTypes = React.PropTypes;
+
+const Cell = ({id, marker, onClick}) => (
+  <div className="cell" id={id} onClick={onClick}>{marker}</div>
+);
+Cell.propTypes = {
+  id: PropTypes.number.isRequired,
+  marker: PropTypes.string.isRequired,
+  onClick: PropTypes.func.isRequired
+};
+
+const Board = ({board, markers, onCellClick}) => (
+  <div className="board">
+    {board.cells.map((marker, id) =>
+      <Cell
+        id={id} marker={marker}
+        onClick={() => onCellClick(id, markers, board, marker)}
+      />
+    )}
+  </div>
+);
+Board.propTypes = {
+  board: PropTypes.object.isRequired,
+  onCellClick: PropTypes.func.isRequired
+};
+
+const Notification = ({message, show, buttonYes, onClickYes, buttonNo, onClickNo}) => (
+  <div className={"notification" + (show ? " active" : "")}>
+    <div className="content">
+      <p>{message}</p>
+      <button onClick={onClickYes}>{buttonYes}</button>
+      {buttonNo &&
+        <button onClick={onClickNo}>{buttonNo}</button>
+      }
+    </div>
+  </div>
+)
+Notification.propTypes = {
+  message: PropTypes.string.isRequired,
+  show: PropTypes.bool.isRequired,
+  buttonYes: PropTypes.string.isRequired,
+  onClickYes: PropTypes.func.isRequired
+}
+
+/*****************************************/
+/* container component for TicTacToe
+/*****************************************/
+const connect = ReactRedux.connect;
+
+const TicTacToe = connect(
+  (state) => ({
+    board: state.board,
+    markers: state.gameSettings
+  }),
+  (dispatch) => ({
+    onCellClick: (id, markers, board, marker) => {
+      if (marker === '') {
+        let updates = computeGameUpdates(id, markers, board);
+        dispatch(updateCells(updates.board));
+        // timeout is not a good solution here, but good enough for now
+        setTimeout(function() {
+          dispatch(updateGameStatus(updates.gameStatus));
+        }, 500);
+      }
+    }
+  })
+)(Board);
+
+const GameSetting = connect(
+  (state) => {
+    return {
+      message: "Which one do you want to be?",
+      show: !state.gameSettings.hideSettings,
+      buttonYes: 'X',
+      buttonNo: 'O'
+    }
+  },
+  (dispatch) => {
+    return {
+      onClickYes: () => {
+        dispatch(setMarkers('X', 'O'));
+      },
+      onClickNo: () => {
+        dispatch(setMarkers('O', 'X'));
+      }
+    }
+  }
+)(Notification)
+
+const GameStatus = connect(
+  (state) => {
+    return {
+      message: state.gameStatus,
+      show: state.gameStatus != GAME_STATUS.DEFAULT,
+      buttonYes: 'Restart'
+    }
+  },
+  (dispatch) => {
+    return {
+      onClickYes: () => {
+        dispatch(resetGame());
+      }
+    }
+  }
+)(Notification)
+
+/*****************************************/
+/* App.js
+/*****************************************/
+const App = ({title}) => (
+  <div className='app'>
+    <p className="title">{title}</p>
+    <GameSetting />
+    <GameStatus />
+    <TicTacToe />
+  </div>
+)
+
+/*****************************************/
+/* index.js
+/*****************************************/
+const Provider = ReactRedux.Provider;
+const createStore = Redux.createStore;
+
+let store = createStore(ticTacToe);
+ReactDOM.render(
+  <Provider store={store}>
+    <App title="Tic Tac Toe" />
+  </Provider>
+,
+  document.getElementById('root')
+);
+
+/*****************************************/
+/* Debug store
+/*****************************************/
+// let unsubscribe = store.subscribe(() =>
+//   console.log(store.getState())
+// )

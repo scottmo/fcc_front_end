@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="UTF-8">
+    <title>FCC: Twitch.tv JSON API</title>
+    
+    
+    <link rel="stylesheet" href="css/normalize.css">
+
+    <link rel='stylesheet prefetch' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css'>
+<link rel='stylesheet prefetch' href='https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.6/paper/bootstrap.min.css'>
+
+        <link rel="stylesheet" href="css/style.css">
+
+    
+    
+    
+  </head>
+
+  <body>
+
+    
+<main ng-app="twitchStatusApp" ng-controller="channelCtrl">
+  <div class="header">
+    <div class="logo"><i class="fa fa-twitch"></i></div>
+    <div class="quote"><span>&lt;</span><span><strong>Twitch.tv Status</strong></span></div>
+  </div>
+  <div class="content">
+    <ul class="nav nav-tabs">
+      <li data-value="all" class="active"><strong>ALL</strong></li>
+      <li data-value="online"><strong>ONLINE</strong></li>
+      <li data-value="offline"><strong>OFFLINE</strong></li>
+    </ul>
+    <div class="scrollable">
+      <ul ng-repeat="channel in channels" class="channel-list"><a ng-href="http://twitch.tv/{{channel.name}}" target="_blank">
+          <li class="channel row">
+            <div class="col-xs-1"><img src="{{channel.logo}}" class="profile-pic"/></div>
+            <div class="col-xs-9 col-xs-offset-1">
+              <p class="name">{{channel.name}}</p>
+              <p class="status">{{channel.info}}</p>
+            </div>
+            <div class="col-xs-1"><i class="status-icon {{channel.status}}"></i></div>
+          </li></a></ul>
+    </div>
+  </div>
+</main>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.5.5/angular.min.js'></script>
+<script src='https://code.jquery.com/jquery-2.2.4.min.js'></script>
+
+        <script src="js/index.js"></script>
+
+    
+    
+    
+  </body>
+</html>

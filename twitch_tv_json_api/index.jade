@@ -1,0 +1,25 @@
+main(ng-app='twitchStatusApp' ng-controller='channelCtrl')
+  .header
+    .logo
+      i.fa.fa-twitch
+    .quote
+      span &lt;
+      span: strong Twitch.tv Status
+
+  .content
+    ul.nav.nav-tabs
+      li(data-value="all").active: strong ALL
+      li(data-value="online"): strong ONLINE
+      li(data-value="offline"): strong OFFLINE
+
+    .scrollable
+      ul(ng-repeat="channel in channels").channel-list
+        a(ng-href="http://twitch.tv/{{channel.name}}" target="_blank")
+          li.channel.row
+            .col-xs-1
+              img.profile-pic(src="{{channel.logo}}")
+            .col-xs-9.col-xs-offset-1
+              p.name {{channel.name}}
+              p.status {{channel.info}}
+            .col-xs-1
+              i.status-icon(class="{{channel.status}}")
